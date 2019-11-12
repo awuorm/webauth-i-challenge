@@ -3,20 +3,41 @@ const db = require("./user-model");
 const bcrypt = require("bcryptjs");
 const router = express.Router();
 
-router.get("/users", handleAllUSersGet);
-router.get("/users/:id", handleUSersGetById);
+router.get("/users", restricted, handleAllUSersGet);
+router.get("/users/:id", restricted, handleUSersGetById);
 router.post("/register", handleRegister);
-router.post("/login", restricted, handleLogin);
+router.post("/login", handleLogin);
+router.get("/logout", handleLogout);
+
+function handleLogout(req, res) {
+  if (req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        res.json("Error loging you out!");
+      } else {
+        res.json("goodbye!");
+      }
+    });
+  } else {
+    res.end();
+  }
+}
 
 function handleLogin(req, res) {
-  db.find()
-    .then(data => {
-      console.log(data);
-      res.status(200).json(data);
+  let { username, password } = req.body;
+  db.findBy(username)
+    .then(user => {
+      if (user && bcrypt.compareSync(password, user.password)) {
+        req.session.user = user;
+        res.status(200).json({
+          message: `Welcome ${user.username}!`
+        });
+      } else {
+        res.status(401).json({ message: "Invalid Credentials" });
+      }
     })
     .catch(error => {
-      console.log(error);
-      res.status(500).json({ errorMessage: error });
+      res.status(500).json(error);
     });
 }
 
@@ -65,22 +86,10 @@ function handleAllUSersGet(req, res) {
 //custom middleware
 
 function restricted(req, res, next) {
-  const { username, password } = req.headers;
-  if (username && password) {
-    db.findBy(username)
-      .then(user => {
-        console.log(user);
-        if (user && bcrypt.compareSync(password, user.password)) {
-          next();
-        } else {
-          res.status(401).json({ message: "Invalid Credentials" });
-        }
-      })
-      .catch(error => {
-        res.status(500).json({ message: "Unexpected error" });
-      });
+  if (req.session && req.session.user) {
+    next();
   } else {
-    res.status(400).json({ message: "No credentials provided" });
+    res.status(401).json({ errorMessage: "No credentials provided" });
   }
 }
 
